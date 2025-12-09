@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 스크립트 벤치마킹 - 대화형</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Noto Sans KR', sans-serif; }
+    
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(-20px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    
+    .fade-in-up { animation: fadeInUp 0.6s ease-out; }
+    .slide-in { animation: slideIn 0.5s ease-out; }
+    .message { animation: slideIn 0.4s ease-out; }
+    
+    .glass {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .gradient-text {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+    const { Sparkles, FileText, MessageSquare, TrendingUp, Eye, Shield, Target, ChevronRight, Loader2, Settings, Key, X, Check } = lucide;
+
+    function ConversationalBenchmarking() {
+      const [step, setStep] = useState(0);
+      const [input, setInput] = useState('');
+      const [length, setLength] = useState('6-10분');
+      const [isLoading, setIsLoading] = useState(false);
+      const [messages, setMessages] = useState([
+        { type: 'assistant', text: '안녕하세요! AI 스크립트 벤치마킹에 오신 걸 환영합니다. 원본 대본이나 기사를 붙여넣어 주시면, 정리부터 재창조, 썸네일 기획까지 한 번에 분석해드릴게요! 🚀' }
+      ]);
+
+      const [apiKey, setApiKey] = useState('');
+      const [showApiSettings, setShowApiSettings] = useState(false);
+      const [tempApiKey, setTempApiKey] = useState('');
+      const [isTestingApi, setIsTestingApi] = useState(false);
+      const [apiTestResult, setApiTestResult] = useState(null);
+
+      useEffect(() => {
+        const savedApiKey = localStorage.getItem('claude_api_key');
+        if (savedApiKey) {
+          setApiKey(savedApiKey);
+        } else {
+          setShowApiSettings(true);
+        }
+      }, []);
+
+      const saveApiKey = () => {
+        if (tempApiKey.trim()) {
+          localStorage.setItem('claude_api_key', tempApiKey.trim());
+          setApiKey(tempApiKey.trim());
+          setShowApiSettings(false);
+          setApiTestResult(null);
+          setMessages(prev => [...prev, { 
+            type: 'system', 
+            text: '✅ API 키가 저장되었습니다! 이제 분석을 시작할 수 있어요.' 
+          }]);
+        }
+      };
+
+      const testApiKey = async () => {
+        if (!tempApiKey.trim()) return;
+        setIsTestingApi(true);
+        setApiTestResult(null);
+
+        try {
+          const response = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": tempApiKey.trim(),
+              "anthropic-version": "2023-06-01"
+            },
+            body: JSON.stringify({
+              model: "claude-sonnet-4-20250514",
+              max_tokens: 100,
+              messages: [{ role: "user", content: "Hello" }]
+            })
+          });
+
+          if (response.ok) {
+            setApiTestResult({ success: true, message: '✅ API 연결 성공!' });
+          } else {
+            const error = await response.json();
+            setApiTestResult({ success: false, message: `❌ ${error.error?.message || '인증 실패'}` });
+          }
+        } catch (error) {
+          setApiTestResult({ success: false, message: '❌ 네트워크 오류' });
+        } finally {
+          setIsTestingApi(false);
+        }
+      };
+
+      const steps = [
+        { icon: FileText, title: '원본 입력', desc: '대본이나 기사를 붙여넣으세요' },
+        { icon: TrendingUp, title: '분석 중', desc: 'Script DNA를 진단합니다' },
+        { icon: Sparkles, title: '재창조', desc: '새로운 구조를 설계합니다' },
+        { icon: Target, title: '완료', desc: '결과를 확인하세요' }
+      ];
+
+      const analyzeBenchmark = async () => {
+        if (!input.trim()) return;
+        
+        if (!apiKey) {
+          alert('⚠️ API 키를 먼저 설정해주세요!');
+          setShowApiSettings(true);
+          return;
+        }
+
+        setIsLoading(true);
+        setStep(1);
+        setMessages(prev => [...prev, { type: 'user', text: `${input.substring(0, 100)}... (${input.length}자)` }]);
+
+        try {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          setMessages(prev => [...prev, { type: 'assistant', text: '📊 Script DNA를 분석하고 있습니다...' }]);
+
+          const response = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": apiKey,
+              "anthropic-version": "2023-06-01"
+            },
+            body: JSON.stringify({
+              model: "claude-sonnet-4-20250514",
+              max_tokens: 4000,
+              messages: [{
+                role: "user",
+                content: `당신은 "뉴스→유튜브 대본 벤치마킹 챗봇"입니다.
+
+목표 길이: ${length}
+대본: ${input}
+
+다음 순서로 출력:
+1) 4대 점수(CTR/리텐션/신뢰/오디언스) - 각 0~100점
+2) 병목 TOP3
+3) 처방 TOP5
+4) 0~60초 훅 3안
+5) 리텐션 비트맵
+6) 제목 8개 + 썸네일 6개`
+              }]
+            })
+          });
+
+          if (!response.ok) throw new Error('API 호출 실패');
+          const data = await response.json();
+          const result = data.content[0].text;
+
+          setStep(2);
+          await new Promise(resolve => setTimeout(resolve, 800));
+          setMessages(prev => [...prev, { type: 'assistant', text: '✅ 분석이 완료되었습니다!' }]);
+
+          setStep(3);
+          await new Promise(resolve => setTimeout(resolve, 800));
+          setMessages(prev => [...prev, { type: 'result', text: result }]);
+
+        } catch (error) {
+          setMessages(prev => [...prev, { type: 'error', text: '❌ 분석 중 오류가 발생했습니다.' }]);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      return (
+        <div style={{ minHeight: '100vh', background: 'linear-gradient(to bottom right, #0f172a, #581c87, #0f172a)', padding: '24px' }}>
+          <div style={{ maxWidth: '896px', margin: '0 auto' }}>
+            {/* 헤더 */}
+            <div className="fade-in-up" style={{ textAlign: 'center', marginBottom: '32px', position: 'relative' }}>
+              <button
+                onClick={() => setShowApiSettings(true)}
+                className="glass"
+                style={{ position: 'absolute', right: 0, top: 0, padding: '12px', borderRadius: '12px', cursor: 'pointer', border: 'none', transition: 'all 0.3s' }}
+                title="API 설정"
+              >
+                {apiKey ? <Check size={20} color="#4ade80" /> : <Settings size={20} color="#9ca3af" />}
+              </button>
+
+              <div className="glass" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderRadius: '9999px', marginBottom: '16px' }}>
+                <Sparkles size={16} color="#c084fc" />
+                <span style={{ fontSize: '14px', color: '#d8b4fe', fontWeight: 500 }}>AI 스크립트 벤치마킹 One-Pass PRO</span>
+              </div>
+              
+              <h1 className="gradient-text" style={{ fontSize: '48px', fontWeight: 900, marginBottom: '16px', fontFamily: 'Space Mono, monospace' }}>
+                Script Benchmark AI
+              </h1>
+              <p style={{ color: '#d1d5db', fontSize: '18px' }}>
+                원본 대본만 넣으면 정리부터 재창조, 썸네일 기획까지 한 번에 끝
+              </p>
+            </div>
+
+            {/* API 설정 모달 */}
+            {showApiSettings && (
+              <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '24px' }}>
+                <div className="glass" style={{ borderRadius: '24px', padding: '32px', maxWidth: '448px', width: '100%', position: 'relative' }}>
+                  <button onClick={() => setShowApiSettings(false)} style={{ position: 'absolute', right: '24px', top: '24px', color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer' }}>
+                    <X size={24} />
+                  </button>
+
+                  <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+                    <div style={{ width: '64px', height: '64px', borderRadius: '16px', background: 'linear-gradient(to bottom right, #a855f7, #ec4899)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                      <Key size={32} color="white" />
+                    </div>
+                    <h2 style={{ fontSize: '24px', fontWeight: 700, color: 'white', marginBottom: '8px' }}>Claude API 키 설정</h2>
+                    <p style={{ color: '#9ca3af', fontSize: '14px' }}>Anthropic에서 발급받은 API 키를 입력하세요</p>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#d1d5db', marginBottom: '8px' }}>API Key</label>
+                      <input
+                        type="password"
+                        value={tempApiKey}
+                        onChange={(e) => setTempApiKey(e.target.value)}
+                        placeholder="sk-ant-api03-..."
+                        style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '12px 16px', color: 'white', fontFamily: 'monospace', fontSize: '14px' }}
+                      />
+                      <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '8px' }}>브라우저 로컬에만 저장됩니다</p>
+                    </div>
+
+                    {apiTestResult && (
+                      <div style={{ padding: '16px', borderRadius: '12px', border: `1px solid ${apiTestResult.success ? '#10b981' : '#ef4444'}`, background: apiTestResult.success ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)', color: apiTestResult.success ? '#6ee7b7' : '#fca5a5' }}>
+                        {apiTestResult.message}
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                      <button
+                        onClick={testApiKey}
+                        disabled={!tempApiKey.trim() || isTestingApi}
+                        className="glass"
+                        style={{ flex: 1, color: 'white', fontWeight: 500, padding: '12px 16px', borderRadius: '12px', cursor: 'pointer', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                      >
+                        {isTestingApi ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />테스트 중...</> : '연결 테스트'}
+                      </button>
+                      <button
+                        onClick={saveApiKey}
+                        disabled={!tempApiKey.trim()}
+                        style={{ flex: 1, background: 'linear-gradient(to right, #9333ea, #ec4899)', color: 'white', fontWeight: 700, padding: '12px 16px', borderRadius: '12px', cursor: 'pointer', border: 'none' }}
+                      >
+                        저장
+                      </button>
+                    </div>
+
+                    <div style={{ paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                      <p style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '8px' }}>💡 API 키 발급:</p>
+                      <ol style={{ fontSize: '12px', color: '#6b7280', paddingLeft: '16px', listStyle: 'decimal' }}>
+                        <li><a href="https://console.anthropic.com" target="_blank" style={{ color: '#c084fc' }}>console.anthropic.com</a> 접속</li>
+                        <li>API Keys 메뉴에서 새 키 생성</li>
+                      </ol>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 진행 단계 */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '32px' }}>
+              {steps.map((s, i) => {
+                const Icon = s.icon;
+                const isActive = i === step;
+                const isDone = i < step;
+                
+                return (
+                  <div key={i} style={{ flex: 1, position: 'relative' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', transition: 'transform 0.3s', transform: isActive ? 'scale(1.05)' : 'scale(1)' }}>
+                      <div style={{
+                        width: '64px',
+                        height: '64px',
+                        borderRadius: '16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginBottom: '12px',
+                        transition: 'all 0.3s',
+                        ...(isActive ? { background: 'linear-gradient(to bottom right, #a855f7, #ec4899)', boxShadow: '0 0 20px rgba(168,85,247,0.5)' } :
+                           isDone ? { background: 'rgba(34,197,94,0.2)', border: '2px solid #22c55e' } :
+                           { background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' })
+                      }}>
+                        <Icon size={28} color={isActive || isDone ? 'white' : '#6b7280'} />
+                      </div>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontWeight: 700, marginBottom: '4px', color: isActive ? 'white' : '#9ca3af' }}>{s.title}</div>
+                        <div style={{ fontSize: '12px', color: '#6b7280' }}>{s.desc}</div>
+                      </div>
+                    </div>
+                    {i !== steps.length - 1 && (
+                      <div style={{ position: 'absolute', top: '32px', left: '50%', width: '100%', height: '2px', background: '#374151', transform: 'translateX(8px)' }}>
+                        <div style={{ height: '100%', background: 'linear-gradient(to right, #a855f7, #ec4899)', transition: 'width 0.5s', width: isDone ? '100%' : '0%' }} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* 대화 영역 */}
+            <div className="glass" style={{ borderRadius: '24px', padding: '24px', marginBottom: '24px' }}>
+              <div style={{ height: '384px', overflowY: 'auto', marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '16px', paddingRight: '8px' }}>
+                {messages.map((msg, i) => (
+                  <div key={i} className="message" style={{ display: 'flex', justifyContent: msg.type === 'user' ? 'flex-end' : msg.type === 'system' ? 'center' : 'flex-start' }}>
+                    <div style={{
+                      maxWidth: '768px',
+                      borderRadius: '16px',
+                      padding: '16px',
+                      ...(msg.type === 'user' ? { background: 'linear-gradient(to bottom right, #9333ea, #ec4899)', color: 'white' } :
+                         msg.type === 'error' ? { background: 'rgba(239,68,68,0.2)', border: '1px solid #ef4444', color: '#fca5a5' } :
+                         msg.type === 'system' ? { background: 'rgba(59,130,246,0.2)', border: '1px solid #3b82f6', color: '#93c5fd', fontSize: '14px' } :
+                         msg.type === 'result' ? { background: 'rgba(255,255,255,0.05)', color: 'white', width: '100%' } :
+                         { background: 'rgba(255,255,255,0.05)', color: '#e5e7eb' })
+                    }}>
+                      <div style={{ lineHeight: 1.6, ...(msg.type === 'result' && { fontFamily: 'monospace', fontSize: '14px', whiteSpace: 'pre-wrap' }) }}>
+                        {msg.text}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {isLoading && (
+                  <div className="message" style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                    <div className="glass" style={{ borderRadius: '16px', padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <Loader2 size={20} color="#c084fc" style={{ animation: 'spin 1s linear infinite' }} />
+                      <span style={{ color: '#d1d5db' }}>AI가 분석하고 있습니다...</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 입력 영역 */}
+              {step === 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#d1d5db', marginBottom: '8px' }}>목표 길이</label>
+                    <select 
+                      value={length}
+                      onChange={(e) => setLength(e.target.value)}
+                      style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '12px 16px', color: 'white' }}
+                    >
+                      <option value="Shorts">Shorts (60초)</option>
+                      <option value="6-10분">6-10분</option>
+                      <option value="15-20분">15-20분</option>
+                      <option value="30분">30분</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#d1d5db', marginBottom: '8px' }}>원본 대본 또는 기사</label>
+                    <textarea
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      placeholder="분석할 대본이나 기사를 붙여넣으세요..."
+                      style={{ width: '100%', height: '160px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '12px 16px', color: 'white', resize: 'none' }}
+                    />
+                    <div style={{ textAlign: 'right', fontSize: '14px', color: '#6b7280', marginTop: '8px' }}>{input.length}자</div>
+                  </div>
+
+                  <button
+                    onClick={analyzeBenchmark}
+                    disabled={!input.trim() || isLoading || !apiKey}
+                    style={{ width: '100%', background: 'linear-gradient(to right, #9333ea, #ec4899)', color: 'white', fontWeight: 700, padding: '16px 24px', borderRadius: '12px', cursor: 'pointer', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', opacity: (!input.trim() || isLoading || !apiKey) ? 0.5 : 1 }}
+                  >
+                    {!apiKey ? (
+                      <><Settings size={20} />API 키를 먼저 설정하세요</>
+                    ) : (
+                      <><Sparkles size={20} />벤치마킹 시작<ChevronRight size={20} /></>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {step === 3 && (
+                <button
+                  onClick={() => {
+                    setStep(0);
+                    setInput('');
+                    setMessages([{ type: 'assistant', text: '새로운 분석을 시작할 준비가 되었습니다! 🚀' }]);
+                  }}
+                  style={{ width: '100%', background: 'linear-gradient(to right, #059669, #10b981)', color: 'white', fontWeight: 700, padding: '16px 24px', borderRadius: '12px', cursor: 'pointer', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                >
+                  새 분석 시작<ChevronRight size={20} />
+                </button>
+              )}
+            </div>
+
+            {/* 정보 카드 */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+              <div className="glass" style={{ borderRadius: '16px', padding: '16px', textAlign: 'center' }}>
+                <TrendingUp size={32} color="#c084fc" style={{ margin: '0 auto 8px' }} />
+                <div style={{ fontSize: '24px', fontWeight: 700, color: 'white', marginBottom: '4px' }}>4대 점수</div>
+                <div style={{ fontSize: '12px', color: '#9ca3af' }}>CTR/리텐션/신뢰/적합도</div>
+              </div>
+              <div className="glass" style={{ borderRadius: '16px', padding: '16px', textAlign: 'center' }}>
+                <MessageSquare size={32} color="#ec4899" style={{ margin: '0 auto 8px' }} />
+                <div style={{ fontSize: '24px', fontWeight: 700, color: 'white', marginBottom: '4px' }}>훅 생성</div>
+                <div style={{ fontSize: '12px', color: '#9ca3af' }}>0-60초 오프닝 3안</div>
+              </div>
+              <div className="glass" style={{ borderRadius: '16px', padding: '16px', textAlign: 'center' }}>
+                <Eye size={32} color="#3b82f6" style={{ margin: '0 auto 8px' }} />
+                <div style={{ fontSize: '24px', fontWeight: 700, color: 'white', marginBottom: '4px' }}>썸네일</div>
+                <div style={{ fontSize: '12px', color: '#9ca3af' }}>제목 8개 + 문구 6개</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.render(<ConversationalBenchmarking />, document.getElementById('root'));
+  </script>
+</body>
+</html>
